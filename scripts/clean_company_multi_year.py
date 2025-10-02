@@ -1,4 +1,5 @@
 import pandas as pd
+import os
 
 # ==== Hàm tiện ích ====
 def get_value(df, keywords, year_col):
@@ -32,23 +33,30 @@ def read_with_auto_header(file_path, sheet_name):
     return pd.read_excel(file_path, sheet_name=sheet_name, header=header_row)
 
 
-def process_company_multi_year(company_id, file_path, years):
+def process_company_multi_year(company_id, file_path):
+    """Đọc 1 file Excel và trích xuất dữ liệu nhiều năm."""
     cdkt = read_with_auto_header(file_path, "CÂN ĐỐI KẾ TOÁN")
     kqkd = read_with_auto_header(file_path, "KẾT QUẢ KINH DOANH")
     lctt = read_with_auto_header(file_path, "LƯU CHUYỂN TIỀN TỆ")
 
-    print("📌 Các cột đọc được:", cdkt.columns.tolist())
-
     results = []
+    # tìm các năm trong header
+    years = []
+    for col in cdkt.columns:
+        if "Năm/" in str(col):
+            try:
+                years.append(int(str(col).split("/")[-1]))
+            except:
+                pass
+
     for year in years:
         year_col = None
         for col in cdkt.columns:
-            if str(year) in str(col):  # tìm cột "Năm/2023" hoặc "Năm/2024"
+            if str(year) in str(col):
                 year_col = col
                 break
 
         if year_col is None:
-            print(f"⚠️ Không tìm thấy dữ liệu cho {year}")
             continue
 
         features = {
@@ -92,12 +100,33 @@ def process_company_multi_year(company_id, file_path, years):
     return pd.DataFrame(results)
 
 
-# ==== Chạy thử ====
-file_path = "data/landing/HOSE/VNM/VNM_2023_2024.xlsx"
-df_out = process_company_multi_year("VNM", file_path, [2023, 2024])
+# ==== Chạy cho tất cả công ty ====
+def process_all_companies(base_dir="data/landing", output_path="data/cleaned/all_companies.csv"):
+    all_data = []
+    for company_id in os.listdir(base_dir):
+        company_dir = os.path.join(base_dir, company_id)
+        if not os.path.isdir(company_dir):
+            continue
 
-output_path = "data/cleaned/VNM_2023_2024_clean.csv"
-df_out.to_csv(output_path, index=False, encoding="utf-8-sig")
+        # Lấy tất cả file .xlsx trong thư mục công ty
+        for file in os.listdir(company_dir):
+            if file.endswith(".xlsx"):
+                file_path = os.path.join(company_dir, file)
+                print(f"📂 Đang xử lý {company_id}: {file}")
+                try:
+                    df = process_company_multi_year(company_id, file_path)
+                    all_data.append(df)
+                except Exception as e:
+                    print(f"⚠️ Lỗi {company_id}: {e}")
 
-print(f"✅ Done! Đã lưu dữ liệu tại {output_path}")
-print(df_out)
+    if all_data:
+        final_df = pd.concat(all_data, ignore_index=True)
+        final_df.to_csv(output_path, index=False, encoding="utf-8-sig")
+        print(f"✅ Done! Đã lưu dữ liệu tại {output_path}")
+        print(final_df.head())
+    else:
+        print("⚠️ Không có dữ liệu nào được xử lý.")
+
+
+if __name__ == "__main__":
+    process_all_companies()
